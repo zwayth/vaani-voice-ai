@@ -19,7 +19,7 @@ from ..health import health
 FIRST_TOKEN_TIMEOUT = float(env("LLM_FIRST_TOKEN_TIMEOUT", "4.0"))
 
 OPENAI_COMPAT = {
-    "groq": ("https://api.groq.com/openai/v1/chat/completions", "groq", env("GROQ_MODEL", "llama-3.3-70b-versatile")),
+    "groq": ("https://api.groq.com/openai/v1/chat/completions", "groq", env("GROQ_MODEL", "qwen/qwen3.8-27b")),
     "openai": ("https://api.openai.com/v1/chat/completions", "openai", env("OPENAI_MODEL", "gpt-4.1-mini")),
     "gemini": ("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", "gemini",
                env("GEMINI_MODEL", "gemini-2.5-flash-lite")),
@@ -49,6 +49,10 @@ async def _openai_compat(name: str, messages: list, temperature: float) -> Async
     body = {"model": model, "messages": messages, "stream": True, "temperature": temperature, "max_tokens": 160}
     if name == "pollinations":  # keyless reasoning model: token caps starve the visible answer
         body = {"model": model, "messages": messages, "stream": True}
+    elif "qwen3" in model:  # thinking off: a phone call can't wait for hidden reasoning
+        body["reasoning_effort"] = "none"
+    elif "gpt-oss" in model:
+        body.update({"reasoning_effort": "low", "include_reasoning": False, "max_tokens": 400})
     async with _client.stream("POST", url, json=body, headers=headers) as r:
         if r.status_code != 200:
             raise RuntimeError(f"{name} HTTP {r.status_code}: {(await r.aread())[:200]!r}")
