@@ -338,7 +338,7 @@ async function loadLogs() {
     const s = l.summary, d = new Date(s.started * 1000);
     return `<details class="card log"><summary><b>${s.id}</b><span>${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span><span>${esc(s.caller)} · ${s.channel} · ${s.lang.toUpperCase()}</span>
       <span>${s.turns} turns</span><b>${fmtMs(s.avg_e2e)}</b></summary>
-      <div class="tr">${l.transcript.map((t) => `<p class="${t.role === 'user' ? 'u' : ''}"><em>${t.role === 'user' ? 'Caller' : 'Aria'}</em><span>${esc(t.text)}</span></p>`).join('')}</div></details>`;
+      <div class="tr">${s.recording ? `<audio class="rec" controls preload="none" src="/recordings/${encodeURIComponent(s.recording)}"></audio>` : ''}${l.transcript.map((t) => `<p class="${t.role === 'user' ? 'u' : ''}"><em>${t.role === 'user' ? 'Caller' : 'Aria'}</em><span>${esc(t.text)}</span></p>`).join('')}</div></details>`;
   }).join('');
 }
 

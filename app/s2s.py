@@ -24,6 +24,7 @@ from .audio import float_to_pcm16, pcm16_to_float
 from .config import KEYS, OUT_RATE, SETTINGS, env, system_prompt
 from .health import health
 from .hub import HUB
+from .recording import CallRecorder
 from .session import CallSession
 from .vad import VAD
 
@@ -52,6 +53,8 @@ class GeminiLiveSession:
         self.transcript: list[dict] = []
         self.turns: list[dict] = []
         self.started = time.time()
+        self.rec = CallRecorder()
+        self.recording: str | None = None
         self.state = "connecting"
         self.providers = {"stt": "native", "llm": MODEL.split("-preview")[0], "tts": "native", "engine": "gemini_live"}
         self.ws = None
@@ -72,7 +75,8 @@ class GeminiLiveSession:
                 "state": self.state, "started": self.started, "duration": round(time.time() - self.started),
                 "turns": len(self.turns), "last_e2e": last.get("e2e_ms"),
                 "avg_e2e": round(sum(lats) / len(lats)) if lats else None, "providers": dict(self.providers),
-                "last_text": self.transcript[-1]["text"][:90] if self.transcript else ""}
+                "last_text": self.transcript[-1]["text"][:90] if self.transcript else "",
+                "recording": self.recording, "rec_t0": self.rec.t0}
 
     async def event(self, ev: dict):
         ev["call_id"] = self.id
@@ -151,10 +155,12 @@ class GeminiLiveSession:
             pass
         if not failed:
             self.set_state("ended")
+            self.recording = await asyncio.to_thread(self.rec.save, self.id)
             HUB.unregister(self)
 
     # ---- input ----
     async def feed(self, x: np.ndarray):
+        self.rec.caller(x)
         for ev in self.vad.feed(x):
             if ev[0] == "start" and time.monotonic() >= self.play_until:
                 self.set_state("hearing")
@@ -177,6 +183,7 @@ class GeminiLiveSession:
 
     async def interrupt(self):
         self.play_until = 0.0
+        self.rec.clear()
         await self._clear()
 
     # ---- model output ----
@@ -223,7 +230,9 @@ class GeminiLiveSession:
                 await self._emit_user()
             self.set_state("speaking")
         now = time.monotonic()
-        self.play_until = max(self.play_until, now) + len(x) / OUT_RATE
+        start = max(self.play_until, now)
+        self.rec.agent(x, time.time() + (start - now))
+        self.play_until = start + len(x) / OUT_RATE
         await self._send_audio(x)
 
     async def _emit_user(self):

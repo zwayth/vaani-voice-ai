@@ -32,6 +32,8 @@ WEB = ROOT / "web"
 
 app = FastAPI(title="Vaani Voice AI")
 app.mount("/static", StaticFiles(directory=WEB), name="static")
+from .recording import REC_DIR  # noqa: E402
+app.mount("/recordings", StaticFiles(directory=REC_DIR), name="recordings")
 
 
 def register_providers():
