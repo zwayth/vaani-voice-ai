@@ -54,7 +54,8 @@ async def _warm():
     t = time.perf_counter()
     try:
         await warm_caches()
-        log.info("caches warm in %.0f ms", (time.perf_counter() - t) * 1000)
+        log.info("caches warm in %.0f ms, local voice on %s", (time.perf_counter() - t) * 1000,
+                 tts.KOKORO_DEVICE["name"])
     except Exception as e:  # noqa: BLE001
         log.warning("cache warm failed: %s", e)
 

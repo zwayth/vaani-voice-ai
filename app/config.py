@@ -102,7 +102,7 @@ SETTINGS: dict = {
     "tts_chain": ["elevenlabs", "cartesia", "sarvam", "nvidia", "kokoro", "edge", "sapi"],
     "endpoint_ms": 550,          # silence that ends a user turn
     "barge_in": True,
-    "temperature": 0.7,
+    "temperature": 0.5,
     "extra_instructions": "",
     # conversation engine: "cascade" (STT->LLM->TTS, full control + fallbacks) or
     # "gemini_live" (native speech-to-speech model; falls back to cascade automatically)

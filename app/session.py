@@ -25,6 +25,7 @@ SOFT_BREAK = re.compile(r"([,;:—–])\s+")
 JUNK = {"", ".", "you", "thank you.", "thanks for watching!", "bye.", "उपशीर्षक"}
 
 KOKORO_MAX_CALLS = int(env("KOKORO_MAX_CALLS", "2"))
+KOKORO_MAX_CALLS_GPU = int(env("KOKORO_MAX_CALLS_GPU", "4"))
 FILLERS = {"en": ["Hmm,", "Right,", "Okay,"], "hi": ["हम्म,", "अच्छा,", "जी,"]}
 _FILLER_CACHE: dict[str, list[np.ndarray]] = {}
 _GREETING_CACHE: dict[str, list[np.ndarray]] = {}
@@ -57,6 +58,48 @@ async def greeting_audio(lang: str, chain: list[str], refresh: bool = False) -> 
     if refresh or key not in _GREETING_CACHE:
         _GREETING_CACHE[key] = [c async for c in tts.render(text, lang, chain=chain)]
     return _GREETING_CACHE[key]
+
+
+JUNK_REPLY = re.compile(r"(?i)(response is invalid|invalid response|as an ai\b|i cannot assist|\[object|^\s*(null|none|undefined)\s*$)")
+DEVANAGARI = re.compile(r"[ऀ-ॿ]")
+
+
+def _reply_ok(text: str, lang: str) -> bool:
+    t = ex.strip_tags(text)
+    if not t or JUNK_REPLY.search(t):
+        return False
+    if lang == "hi" and re.search(r"[A-Za-z]{3}", t) and not DEVANAGARI.search(t):
+        return False  # Hindi call answered in English
+    return True
+
+
+async def guarded_reply(msgs: list, lang: str, on_provider, attempts: int = 3):
+    """Stream the model's reply, but check its opening before anything is spoken. A junk or wrong-language
+    opening is discarded and regenerated, so the caller never hears a glitch."""
+    for attempt in range(attempts):
+        head, gen = "", llm.stream_reply(msgs, SETTINGS["llm_chain"], SETTINGS["temperature"], lang,
+                                         on_provider=on_provider)
+        buffered: list[str] = []
+        done = False
+        async for tok in gen:
+            buffered.append(tok)
+            head += tok
+            if len(ex.strip_tags(head)) >= 24:
+                break
+        else:
+            done = True
+        if _reply_ok(head, lang):
+            for tok in buffered:
+                yield tok
+            if not done:
+                async for tok in gen:
+                    yield tok
+            return
+        await gen.aclose()
+        msgs = msgs + [{"role": "system", "content":
+                        "Your previous draft was invalid. Reply to the caller naturally"
+                        + (" in Hindi (Devanagari script)." if lang == "hi" else ".")}]
+    yield ("माफ़ कीजिए, क्या आप एक बार फिर बोल सकते हैं?" if lang == "hi" else "Sorry, could you say that once more?")
 
 
 class Chunker:
@@ -132,7 +175,8 @@ class CallSession:
         # capacity-aware voice routing: local GPU/CPU voice only while it has headroom, chosen once per call
         chain = list(SETTINGS["tts_chain"])
         local_calls = sum(1 for c in HUB.calls.values() if "kokoro" in getattr(c, "tts_chain", ()))
-        if local_calls >= KOKORO_MAX_CALLS and "kokoro" in chain:
+        limit = KOKORO_MAX_CALLS_GPU if tts.KOKORO_DEVICE["name"].startswith("gpu") else KOKORO_MAX_CALLS
+        if local_calls >= limit and "kokoro" in chain:
             chain.remove("kokoro")
         self.tts_chain = chain
 
@@ -359,8 +403,7 @@ class CallSession:
                 def on_llm(p):
                     m["llm"] = self.providers["llm"] = p
 
-                async for tok in llm.stream_reply(msgs, SETTINGS["llm_chain"], SETTINGS["temperature"], lang,
-                                                  on_provider=on_llm):
+                async for tok in guarded_reply(msgs, lang, on_llm):
                     if not got_first:
                         m["llm_ttft_ms"] = round((time.perf_counter() - t_llm) * 1000)
                         got_first = True

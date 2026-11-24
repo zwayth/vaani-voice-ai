@@ -35,7 +35,7 @@ NATIVE = {  # our tag -> vendor tag, per provider
 
 def _kokoro_ok() -> bool:
     from ..config import ROOT
-    return (ROOT / "models" / "kokoro-v1.0.int8.onnx").exists()
+    return any((ROOT / "models" / n).exists() for n in ("kokoro-v1.0.int8.onnx", "kokoro-v1.0.onnx", "kokoro-v1.0.fp16.onnx"))
 
 
 def configured(name: str) -> bool:
@@ -105,17 +105,45 @@ _kokoro = None
 _kokoro_sem = asyncio.Semaphore(int(env("KOKORO_PARALLEL", "2")))
 
 
+KOKORO_DEVICE = {"name": "cpu"}
+
+
 def _kokoro_load():
+    """GPU (CUDA) when available - ~3x faster and keeps the CPU free for other calls - else int8 on CPU."""
     global _kokoro
     if _kokoro is None:
         import onnxruntime as ort
         from kokoro_onnx import Kokoro
         from ..config import ROOT
-        so = ort.SessionOptions()
-        so.intra_op_num_threads = int(env("KOKORO_THREADS", "3"))
-        sess = ort.InferenceSession(str(ROOT / "models" / "kokoro-v1.0.int8.onnx"), so,
-                                    providers=["CPUExecutionProvider"])
-        _kokoro = Kokoro.from_session(sess, str(ROOT / "models" / "voices-v1.0.bin"))
+        models = ROOT / "models"
+        sess = None
+        want_gpu = env("KOKORO_DEVICE", "auto") != "cpu" and "CUDAExecutionProvider" in ort.get_available_providers()
+        if want_gpu:
+            try:
+                if hasattr(ort, "preload_dlls"):
+                    ort.preload_dlls()
+                ort.set_default_logger_severity(3)
+                for name in ("kokoro-v1.0.fp16.onnx", "kokoro-v1.0.onnx"):
+                    if (models / name).exists():
+                        sess = ort.InferenceSession(str(models / name), ort.SessionOptions(),
+                                                    providers=["CUDAExecutionProvider", "CPUExecutionProvider"])
+                        if sess.get_providers()[0] == "CUDAExecutionProvider":
+                            KOKORO_DEVICE["name"] = f"gpu ({name})"
+                            break
+                        sess = None
+            except Exception:  # noqa: BLE001 - any CUDA/cuDNN problem => CPU
+                sess = None
+        if sess is None:
+            so = ort.SessionOptions()
+            so.intra_op_num_threads = int(env("KOKORO_THREADS", "3"))
+            sess = ort.InferenceSession(str(models / "kokoro-v1.0.int8.onnx"), so, providers=["CPUExecutionProvider"])
+            KOKORO_DEVICE["name"] = "cpu (int8)"
+        _kokoro = Kokoro.from_session(sess, str(models / "voices-v1.0.bin"))
+        try:  # first run compiles GPU kernels; do it now, not on a live call
+            _kokoro.create("Hello.", voice=SETTINGS["kokoro_en"], lang="en-us")
+            _kokoro.create("नमस्ते।", voice=SETTINGS["kokoro_hi"], lang="hi")
+        except Exception:  # noqa: BLE001
+            pass
     return _kokoro
 
 
