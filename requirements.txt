@@ -1,0 +1,12 @@
+fastapi
+uvicorn[standard]
+websockets
+httpx
+numpy
+edge-tts
+python-dotenv
+webrtcvad-wheels
+SpeechRecognition
+faster-whisper
+kokoro-onnx
+onnxruntime

@@ -1,0 +1,163 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Vaani · Voice AI Console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500;600&family=Noto+Sans+Devanagari:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="/static/app.css?v=5" />
+</head>
+<body>
+<div class="shell">
+  <aside class="side">
+    <div class="brand"><span class="mark"></span><div><b>VAANI</b><small>Voice AI · Support</small></div></div>
+    <nav>
+      <button class="nav on" data-view="console"><i>◉</i>Live Console</button>
+      <button class="nav" data-view="calls"><i>▦</i>Active Calls <em id="navActive">0</em></button>
+      <button class="nav" data-view="studio"><i>✦</i>Agent Studio</button>
+      <button class="nav" data-view="providers"><i>⌁</i>Providers</button>
+      <button class="nav" data-view="logs"><i>☰</i>Call Logs</button>
+    </nav>
+    <div class="side-foot">
+      <div class="pipe"><span>Mic</span><span>VAD</span><span>STT</span><span>LLM</span><span>TTS</span><span>Voice</span></div>
+      <small>Streaming speech-to-speech · barge-in · multi-provider failover</small>
+    </div>
+  </aside>
+
+  <main>
+    <header class="top">
+      <div>
+        <h1 id="viewTitle">Live Console</h1>
+        <p id="viewSub">Talk to the agent exactly as your customers will.</p>
+      </div>
+      <div class="kpis">
+        <div class="kpi"><span>Active calls</span><b id="kActive">0</b></div>
+        <div class="kpi"><span>Voice-to-voice p50</span><b id="kP50">–</b></div>
+        <div class="kpi"><span>p90</span><b id="kP90">–</b></div>
+        <div class="kpi"><span>Calls handled</span><b id="kTotal">0</b></div>
+        <div class="live" id="liveDot"><i></i>LIVE</div>
+      </div>
+    </header>
+
+    <div id="banner" class="banner hidden"></div>
+
+    <!-- ============ LIVE CONSOLE ============ -->
+    <section class="view on" id="v-console">
+      <div class="console">
+        <div class="card stage">
+          <div class="seg engine" id="engineSeg">
+            <button data-engine="cascade" class="on"><b>Cascade</b><small>STT → LLM → Voice · full control</small></button>
+            <button data-engine="gemini_live"><b>Native S2S</b><small>Gemini Live · speech-native</small></button>
+          </div>
+          <div class="stage-top">
+            <div class="seg" id="langSeg">
+              <button data-lang="auto" class="on">Auto</button><button data-lang="en">English</button><button data-lang="hi">हिंदी</button>
+            </div>
+            <div class="state-pill" id="statePill"><i></i><span>Idle</span></div>
+          </div>
+          <canvas id="orb" width="560" height="560"></canvas>
+          <div class="agent-id"><b>Aria</b><span id="agentCompany">Support agent</span></div>
+          <div class="controls">
+            <button class="btn primary big" id="callBtn"><span class="ico">✆</span><span id="callLbl">Start call</span></button>
+            <button class="btn ghost" id="muteBtn" disabled>Mute</button>
+          </div>
+          <p class="hint">Headphones give the cleanest barge-in. Speak anytime — interrupt Aria mid-sentence and she stops to listen.</p>
+        </div>
+
+        <div class="col">
+          <div class="card transcript">
+            <div class="card-h"><h3>Conversation</h3><span class="tag" id="callIdTag">no call</span></div>
+            <div class="msgs" id="msgs"><div class="empty">Press <b>Start call</b> and say hello — in English, Hindi or Hinglish.</div></div>
+            <form class="typebar" id="typeForm">
+              <input id="typeIn" placeholder="Or type as the caller…" autocomplete="off" />
+              <button class="btn small">Send</button>
+            </form>
+          </div>
+
+          <div class="card latency">
+            <div class="card-h"><h3>Last turn latency</h3><span class="tag mono" id="e2eTag">–</span></div>
+            <div class="wf" id="wf">
+              <div class="wf-row"><span>Speech-to-text</span><div class="bar"><i class="c1" id="bStt"></i></div><b id="tStt">–</b></div>
+              <div class="wf-row"><span>LLM first token</span><div class="bar"><i class="c2" id="bLlm"></i></div><b id="tLlm">–</b></div>
+              <div class="wf-row"><span>Voice-to-voice</span><div class="bar"><i class="c3" id="bE2e"></i></div><b id="tE2e">–</b></div>
+            </div>
+            <div class="provs" id="provs"><span>STT <b>–</b></span><span>LLM <b>–</b></span><span>TTS <b>–</b></span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ ACTIVE CALLS ============ -->
+    <section class="view" id="v-calls">
+      <div class="toolbar">
+        <button class="btn primary" id="spawnBtn">Launch 3 simulated callers</button>
+        <span class="muted">Simulated callers talk to the real pipeline in parallel, to show concurrency.</span>
+      </div>
+      <div class="grid" id="callGrid"><div class="empty">No live calls right now.</div></div>
+    </section>
+
+    <!-- ============ STUDIO ============ -->
+    <section class="view" id="v-studio">
+      <div class="studio">
+        <div class="card">
+          <div class="card-h"><h3>Agent persona</h3><button class="btn small primary" id="saveBtn">Save &amp; apply</button></div>
+          <label>Company<input id="sCompany" /></label>
+          <label>Mission<textarea id="sGoal" rows="3"></textarea></label>
+          <label>Extra instructions / knowledge<textarea id="sExtra" rows="5" placeholder="Policies, FAQs, offers, escalation rules…"></textarea></label>
+          <div class="two">
+            <label>English greeting<textarea id="sGreetEn" rows="2"></textarea></label>
+            <label>Hindi greeting<textarea id="sGreetHi" rows="2"></textarea></label>
+          </div>
+          <div class="two">
+            <label>Local voice · English (Kokoro, fastest)<select id="sKokEn"></select></label>
+            <label>Local voice · Hindi (Kokoro)<select id="sKokHi"></select></label>
+          </div>
+          <div class="two">
+            <label>Cloud fallback voice · English (Edge)<select id="sVoiceEn"></select></label>
+            <label>Cloud fallback voice · Hindi (Edge)<select id="sVoiceHi"></select></label>
+          </div>
+          <div class="two">
+            <label>Default engine (phone calls)<select id="sEngine"><option value="cascade">Cascade · STT → LLM → Voice</option><option value="gemini_live">Native S2S · Gemini Live</option></select></label>
+            <label>Gemini Live voice<select id="sGemVoice">
+              <option>Kore</option><option>Aoede</option><option>Leda</option><option>Zephyr</option><option>Puck</option><option>Charon</option><option>Fenrir</option><option>Orus</option></select></label>
+          </div>
+          <div class="three">
+            <label>End-of-turn silence <span class="mono" id="epVal"></span><input type="range" id="sEndpoint" min="300" max="1200" step="50" /></label>
+            <label class="chk"><input type="checkbox" id="sBarge" /> Barge-in</label>
+            <label class="chk"><input type="checkbox" id="sExpr" /> Expressive (sigh · breath · whisper)</label>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-h"><h3>Voice lab</h3><span class="tag">expressive tags</span></div>
+          <div class="tags" id="tagBtns">
+            <button data-t="[breath]">breath</button><button data-t="[sigh]">sigh</button><button data-t="[laugh]">laugh</button>
+            <button data-t="[pause]">pause</button><button data-t="[hmm]">hmm</button><button data-t="[whisper]…[/whisper]">whisper</button>
+          </div>
+          <textarea id="labText" rows="5">[sigh] I completely understand how frustrating that is. [breath] Let me sort it out right now. [whisper]Between us, I've added priority delivery for free.[/whisper] [laugh] You're all set!</textarea>
+          <div class="seg small" id="labLang"><button data-lang="en" class="on">English</button><button data-lang="hi">हिंदी</button></div>
+          <button class="btn primary" id="labPlay">▶ Render &amp; play</button>
+          <audio id="labAudio" controls></audio>
+          <div class="presets">
+            <button data-p="hi">Hindi empathy sample</button><button data-p="angry">Angry-customer de-escalation</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ PROVIDERS ============ -->
+    <section class="view" id="v-providers">
+      <p class="muted pad">Each stage tries providers top to bottom. A failing or slow provider is skipped automatically for a cool-down period, so a vendor outage never drops a call. Add keys in <code>D:\voice\.env</code> to light up premium providers.</p>
+      <div class="chains" id="chains"></div>
+    </section>
+
+    <!-- ============ LOGS ============ -->
+    <section class="view" id="v-logs">
+      <div class="logs" id="logs"><div class="empty">No calls recorded yet.</div></div>
+    </section>
+  </main>
+</div>
+<script src="/static/app.js?v=5"></script>
+</body>
+</html>

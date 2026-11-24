@@ -1,0 +1,19 @@
+# environment & secrets
+.venv/
+.env
+__pycache__/
+*.pyc
+
+# large model weights (downloaded by run.ps1)
+models/
+
+# runtime data
+data/
+*.log
+
+# editors
+.vscode/
+.idea/
+
+# demo recordings
+demo/
